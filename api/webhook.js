@@ -1,6 +1,6 @@
 export default async function handler(req, res) {
   try {
-    // ================= VERIFY =================
+    // ===== VERIFY =====
     if (req.method === "GET") {
       const VERIFY_TOKEN = "motiur";
 
@@ -14,39 +14,39 @@ export default async function handler(req, res) {
       return res.sendStatus(403);
     }
 
-    // ================= RECEIVE MESSAGE =================
+    // ===== MESSAGE =====
     if (req.method === "POST") {
-      const entry = req.body.entry?.[0];
-      const messaging = entry?.messaging?.[0];
+      const body = req.body;
 
-      if (messaging?.message?.text) {
-        const senderId = messaging.sender.id;
-        const text = messaging.message.text;
+      if (body.object === "page") {
+        body.entry.forEach(async (entry) => {
+          const webhookEvent = entry.messaging[0];
+          const senderId = webhookEvent.sender.id;
 
-        const token = process.env.PAGE_ACCESS_TOKEN;
-
-        const response = await fetch(
-          `https://graph.facebook.com/v18.0/me/messages?access_token=${token}`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+          if (webhookEvent.message && webhookEvent.message.text) {
+            const reply = {
               recipient: { id: senderId },
-              message: { text: "BOT REPLY: " + text },
-            }),
+              message: { text: "BOT REPLY: hi 👋" },
+            };
+
+            await fetch(
+              `https://graph.facebook.com/v18.0/me/messages?access_token=${process.env.PAGE_ACCESS_TOKEN}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(reply),
+              }
+            );
           }
-        );
+        });
 
-        const data = await response.json();
-        console.log("FB SEND RESPONSE:", data);
+        return res.status(200).send("EVENT_RECEIVED");
       }
-
-      return res.status(200).send("EVENT_RECEIVED");
     }
 
     return res.sendStatus(404);
-  } catch (err) {
-    console.error("ERROR:", err);
+  } catch (e) {
+    console.error(e);
     return res.status(500).send("ERROR");
   }
 }
