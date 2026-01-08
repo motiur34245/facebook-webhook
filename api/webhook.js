@@ -1,9 +1,9 @@
 export default async function handler(req, res) {
-  const VERIFY_TOKEN = "motiur"; // Meta dashboard এ যেটা দিয়েছো
+  const VERIFY_TOKEN = "motiur";
+  const PAGE_TOKEN = process.env.PAGE_TOKEN;
+  const GEMINI_KEY = process.env.GEMINI_KEY;
 
-  // ===============================
-  // 1️⃣ Webhook Verification (GET)
-  // ===============================
+  // 🔹 Verify webhook
   if (req.method === "GET") {
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
@@ -12,59 +12,48 @@ export default async function handler(req, res) {
     if (mode === "subscribe" && token === VERIFY_TOKEN) {
       return res.status(200).send(challenge);
     }
-    return res.status(403).send("Invalid verify token");
+    return res.status(403).send("Forbidden");
   }
 
-  // ===============================
-  // 2️⃣ Message Receive (POST)
-  // ===============================
+  // 🔹 Handle messages
   if (req.method === "POST") {
     const entry = req.body.entry?.[0];
     const event = entry?.messaging?.[0];
+    const senderId = event?.sender?.id;
+    const userText = event?.message?.text;
 
-    // ❌ যদি message না থাকে
-    if (!event || !event.message) {
-      return res.status(200).send("No message");
-    }
+    if (!userText) return res.sendStatus(200);
 
-    // ❌ Page নিজে যে message পাঠায় (echo) → ignore
-    if (event.message.is_echo) {
-      return res.status(200).send("Echo ignored");
-    }
+    // 🔹 Call Gemini AI
+    const aiRes = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_KEY}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: userText }] }],
+        }),
+      }
+    );
 
-    const senderId = event.sender.id;
-    const userText = event.message.text || "";
+    const aiData = await aiRes.json();
+    const reply =
+      aiData.candidates?.[0]?.content?.parts?.[0]?.text ||
+      "দুঃখিত, একটু পরে আবার লিখুন 🙂";
 
-    // ===============================
-    // 3️⃣ SIMPLE AUTO REPLY (test)
-    // ===============================
-    let replyText = "হ্যালো 👋\nআমাদের পেজে যোগাযোগ করার জন্য ধন্যবাদ।\nদাম বা অর্ডার জানতে লিখুন 😊";
-
-    if (userText.includes("দাম")) {
-      replyText = "📚 বইটির দাম ৩৫০ টাকা।\nঅর্ডার করতে চাইলে নাম ও ঠিকানা পাঠান।";
-    }
-
-    if (userText.includes("অর্ডার")) {
-      replyText = "✅ অর্ডার করতে আপনার নাম, ঠিকানা ও ফোন নাম্বার লিখুন।";
-    }
-
-    // ===============================
-    // 4️⃣ Send Message to Facebook
-    // ===============================
+    // 🔹 Send reply to Facebook
     await fetch(
-      `https://graph.facebook.com/v18.0/me/messages?access_token=${process.env.PAGE_TOKEN}`,
+      `https://graph.facebook.com/v18.0/me/messages?access_token=${PAGE_TOKEN}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           recipient: { id: senderId },
-          message: { text: replyText },
+          message: { text: reply },
         }),
       }
     );
 
-    return res.status(200).send("Message sent");
+    return res.sendStatus(200);
   }
-
-  return res.status(405).send("Method not allowed");
 }
