@@ -1,42 +1,52 @@
+export const config = {
+  api: {
+    bodyParser: true,
+  },
+};
+
 export default async function handler(req, res) {
-  // VERIFY
+  const VERIFY_TOKEN = "motiurkhan";
+
+  // Webhook verify
   if (req.method === "GET") {
     const mode = req.query["hub.mode"];
     const token = req.query["hub.verify_token"];
     const challenge = req.query["hub.challenge"];
 
-    if (mode === "subscribe" && token === process.env.VERIFY_TOKEN) {
+    if (mode === "subscribe" && token === VERIFY_TOKEN) {
       return res.status(200).send(challenge);
     }
-    return res.status(403).send("Forbidden");
+    return res.status(403).send("Invalid verify token");
   }
 
-  // MESSAGE
+  // Receive message
   if (req.method === "POST") {
     const entry = req.body.entry?.[0];
-    const event = entry?.messaging?.[0];
+    const messaging = entry?.messaging?.[0];
 
-    if (!event?.sender?.id || !event?.message?.text) {
-      return res.status(200).send("OK");
+    if (messaging && messaging.sender && messaging.message?.text) {
+      const senderId = messaging.sender.id;
+
+      const replyText =
+        "হ্যালো 👋\nআমাদের পেজে যোগাযোগ করার জন্য ধন্যবাদ।\nদাম, ডেলিভারি বা অর্ডার জানতে লিখুন 😊";
+
+      const PAGE_TOKEN = process.env.PAGE_TOKEN;
+
+      await fetch(
+        `https://graph.facebook.com/v19.0/me/messages?access_token=${PAGE_TOKEN}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            recipient: { id: senderId },
+            message: { text: replyText },
+          }),
+        }
+      );
     }
 
-    const senderId = event.sender.id;
-    const text = event.message.text;
-
-    await fetch(
-      `https://graph.facebook.com/v18.0/me/messages?access_token=${process.env.PAGE_TOKEN}`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          recipient: { id: senderId },
-          message: { text: "আপনি লিখেছেন: " + text },
-        }),
-      }
-    );
-
-    return res.status(200).send("OK");
+    return res.status(200).send("EVENT_RECEIVED");
   }
 
-  res.status(405).end();
-        }
+  res.status(404).send("Not found");
+          }
